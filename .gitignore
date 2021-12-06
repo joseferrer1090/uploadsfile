@@ -1,0 +1,8 @@
+# Para evitar que se suban los archivos
+/uploads/*
+
+# Para evitar que se suba la node_modules
+/node_modules
+
+# Para evitar que se suba el package-lock.json
+package-lock.json
