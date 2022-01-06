@@ -7,9 +7,11 @@ const Yup = require("yup");
 const multer = require("multer");
 const uploadFolder = __dirname + "/uploads/";
 const tempFolder = __dirname + '/tmp/';
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 
 
-const upload = multer({dest: uploadFolder});
+const upload = multer({ dest: uploadFolder });
 const port = 3000;
 
 app.use(express.json()); // JSON 
@@ -19,15 +21,15 @@ app.use(express.urlencoded({ // URLENCODE
 }));
 
 app.get("/", (req, res) => {
-    res.json({
-        success: true, 
-        message: "api funcionando bien"
-    });
+  res.json({
+    success: true,
+    message: "api funcionando bien"
+  });
 });
 
 
 // Process upload file
-app.post('/file_upload', upload.single('single-file'), function(request, response) {
+app.post('/file_upload', upload.single('single-file'), function (request, response) {
 
   var fileName = request.file.originalname; // original file name
   var file = request.file.path; // real file path with temporary name
@@ -36,48 +38,94 @@ app.post('/file_upload', upload.single('single-file'), function(request, respons
   fs.move(file, uploadFolder + fileName, function (err) {
     if (err) {
       console.log(err);
-      response.json({success:false, message: err});
+      response.json({ success: false, message: err });
       return;
     }
-    response.json({success:true, message: 'File uploaded successfully', fileName: fileName});
+    response.json({ success: true, message: 'File uploaded successfully', fileName: fileName });
   });
 });
 
 // Generate QR code 
 app.post("/generate", (req, res) => {
-  
-  const nombre = req.body.nombre;
-  const identificacion = req.body.identificacion;
+
+  const id = req.body.id;
+  const url_search = `https://sig.ises.com.co/sig4prueba/Informeticket/equipo/${id}`;
 
   const obj = JSON.stringify({
-    "nombre": nombre,
-    "identificacion": identificacion
+    url: url_search,
   });
-  
+
   console.log(obj);
 
-  // Este es el que genera la imagen
-  qr.toDataURL(obj, (err, code)=> {
-    if(err){ 
-      return console.log("Error en el qr => ", err)
+  const db = new sqlite3.Database("./db/db_qr.sqlite", sqlite3.OPEN_READWRITE, (err) => { console.log("Error => ", err) });
+
+  let sql_ = `select * from qrs where id_activo = ?`;
+  let params = id;
+  const extis = 0;
+
+  db.get(sql_, [Number(params)], (err, row) => {
+    if(row){
+      extis = 1;
+    } 
+  });
+
+
+  // Este es el que genera la imagen esta imagen se guarda en una base de datos ligera SQLITE
+  qr.toDataURL(obj, (err, code) => {
+    if (err) {
+      return res.status(500).json({
+        error: err
+      });
     } else {
-      res.status(200).json({
-        success: true,
-        value: code
-      })
-      console.log(code);
+      if(extis == 0){
+        db.run("INSERT INTO qrs(data, id_activo) values (?, ?)", [JSON.stringify(code), id])
+        db.close();
+        res.status(200).json({
+          message: "Se creo el qr",
+          code: code,
+          id_activo: id
+        });
+      }
     }
   });
 
-  // Este Es el que imprime en la console
+  // Este Es el que imprime en la console para probar
   qr.toString(obj, (err, code) => {
-    if(err){
+    if (err) {
       return console.log("Error => ", err);
     } else {
       console.log(code)
     }
   })
+
 });
+
+// Consultar el QR, por el id de activo.
+app.get("/qr/:id", async (req, res) => {
+  const id = req.params.id;
+  const db2 = new sqlite3.Database("./db/db_qr.sqlite", sqlite3.OPEN_READWRITE, (err) => { console.log("Error => ", err) });
+
+  let sql = `Select * from qrs where id_activo = ?`;
+
+  await db2.get(sql, [Number(id)], (err, row) => {
+    if (err) {
+     res.status(500).json({
+        message: err,
+        code: 500
+      });
+    }
+     res.status(200).json({
+      id: id,
+      result: {
+        id: row.id,
+        id_activo: row.id_activo,
+        data: JSON.parse(row.data)
+      }
+    })
+  })
+  db2.close();
+})
+
 
 // Login con OAUTH 2.0 y passportjs --> intentando <--
 
@@ -116,6 +164,6 @@ app.post("/login", validate(login_post), (req, res) => {
 });
 
 
-app.listen(port, ()=> {
-    console.log(`El api esta corriendo en el puerto ${port}`);
+app.listen(port, () => {
+  console.log(`El api esta corriendo en el puerto ${port}`);
 })

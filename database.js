@@ -33,11 +33,10 @@ const User = database.define("User", {
         allowNull: false
     }
 }, {
+    // Con este metodo realizo un hash que encripta el password en la base de datos utilizando el paquete bcrypt
     hooks: {
         beforeCreate: (user, options) => {
              user.password = user.password && user.password != "" ? bcrypt.hash(user.password, 10): ""
         }
     }
 });
-
-
